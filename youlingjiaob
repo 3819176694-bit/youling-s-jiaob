@@ -49,7 +49,7 @@ _G[S] = {
     E = false,
     -- 无限体力
     Stamina = false,
-    -- 夜视除雾
+    -- 夜视除雾（亮度调整为1）
     Vision = false,
     -- 自动跳
     AJ = false,
@@ -356,28 +356,46 @@ local function setInfiniteStamina(enabled)
     end
 end
 
--- ==================== 8. 夜视除雾 ====================
-local originalAtmosphere = nil
-local originalFogEnd = 0
+-- ==================== 8. 夜视除雾（亮度调整为1的版本） ====================
+local visionConnection = nil
+local originalBrightness = Lighting.Brightness
+local originalFogEnd = Lighting.FogEnd
+local originalFogStart = Lighting.FogStart
+local originalAmbient = Lighting.Ambient
+local originalOutdoorAmbient = Lighting.OutdoorAmbient
+local originalClockTime = Lighting.ClockTime
+local originalExposureCompensation = Lighting.ExposureCompensation
 
-local function toggleVisionMode(enabled)
-    if enabled then
-        originalAtmosphere = Lighting:FindFirstChild("Atmosphere")
-        originalFogEnd = Lighting.FogEnd
-        Lighting.Brightness = 0.06
-        Lighting.Ambient = Color3.new(0.33, 0.74, 0.35)
-        if originalAtmosphere then originalAtmosphere.Parent = nil end
-        Lighting.FogEnd = 666666
-        Lighting.ColorShift_Top = Color3.new(0.22, 0.54, 0.23)
-        Lighting.ColorShift_Bottom = Color3.new(0.26, 0.57, 0.28)
-    else
-        Lighting.Brightness = 2
-        Lighting.Ambient = Color3.new(1,1,1)
-        if originalAtmosphere then originalAtmosphere.Parent = Lighting end
-        if originalFogEnd > 0 then Lighting.FogEnd = originalFogEnd end
-        Lighting.ColorShift_Top = Color3.new(0,0,0)
-        Lighting.ColorShift_Bottom = Color3.new(0,0,0)
+local function startVisionLoop()
+    if visionConnection then visionConnection:Disconnect() end
+    
+    visionConnection = RunService.RenderStepped:Connect(function()
+        if _G[S].Vision then
+            -- 亮度调整为1的夜视效果
+            Lighting.Brightness = 1 -- 亮度调整为1
+            Lighting.FogEnd = 999999 -- 彻底除雾
+            Lighting.FogStart = 0
+            Lighting.Ambient = Color3.fromRGB(200, 200, 200) -- 较亮的环境光
+            Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200) -- 室外也是较亮
+            Lighting.ClockTime = 14 -- 下午时间，光线充足
+            Lighting.ExposureCompensation = 0.5 -- 适度曝光
+        end
+    end)
+end
+
+local function stopVisionLoop()
+    if visionConnection then
+        visionConnection:Disconnect()
+        visionConnection = nil
     end
+    -- 恢复原始设置
+    Lighting.Brightness = originalBrightness
+    Lighting.FogEnd = originalFogEnd
+    Lighting.FogStart = originalFogStart
+    Lighting.Ambient = originalAmbient
+    Lighting.OutdoorAmbient = originalOutdoorAmbient
+    Lighting.ClockTime = originalClockTime
+    Lighting.ExposureCompensation = originalExposureCompensation
 end
 
 -- ==================== 9. 自动跳 ====================
@@ -635,12 +653,16 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "夜视除雾",
+    Name = "夜视除雾（亮度1）",
     CurrentValue = _G[S].Vision,
     Flag = "VisionToggle",
     Callback = function(v)
         _G[S].Vision = v
-        toggleVisionMode(v)
+        if v then
+            startVisionLoop()
+        else
+            stopVisionLoop()
+        end
     end
 })
 
