@@ -1,0 +1,30 @@
+-- 幽灵生存脚本 v.beta — Rayfield UI 整合版
+-- 整合功能：废料透视 / 天气球透视 / 实体透视 / 无限体力 / 夜视除雾 / 自动跳 / 显示时间 / 传送系统 / 武器系统
+
+-- ==================== 1. Rayfield UI 安全加载 ====================
+local Rayfield
+local loadSuccess, loadError = pcall(function()
+    Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not loadSuccess then
+    loadSuccess, loadError = pcall(function()
+        Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"))()
+    end)
+end
+
+if not Rayfield then
+    error("❌ Rayfield UI 库加载失败")
+    return
+end
+
+-- ==================== 2. 服务与玩家 ====================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+
+local P = Players.LocalPlayer
+local PG = P:WaitForCh
