@@ -871,7 +871,15 @@ OtherTab:CreateButton({
 -- ==================== 14. 启动提示 ====================
 task.spawn(function()
     task.wait(2)
+    
+    -- 使用Rayfield通知显示警告
+    Rayfield:Notify({
+        Title = "⚠️ 警告",
+        Content = "概率封禁，酌情使用，若有封禁，概不负责。",
+        Duration = 10
+    })
+    
     print("✅ 幽灵生存脚本 v.beta 已加载完成")
-    print("📌 实体透视每2秒自动刷新 | 时间显示左下角 | 传送系统已简化 | 无敌模式已移除")
+    print("📌 实体透视每2秒自动刷新 | 时间显示左下角 | 传送系统已简化")
     print("📞 作者QQ: 3819176694 | B站UID: 3494351078427466")
 end)
