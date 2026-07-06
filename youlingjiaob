@@ -1,654 +1,33 @@
--- 幽灵生存脚本 v.beta — Rayfield UI 整合版
--- 整合功能：废料透视 / 天气球透视 / 实体透视 / 无限体力 / 夜视除雾 / 自动跳 / 显示时间 / 传送系统 / 武器系统 / 礼物透视 / 关于页面
-
--- ==================== 1. Rayfield UI 安全加载 ====================
-local Rayfield
-local loadSuccess, loadError = pcall(function()
-    Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-end)
-
-if not loadSuccess then
-    loadSuccess, loadError = pcall(function()
-        Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"))()
-    end)
-end
-
-if not Rayfield then
-    error("❌ Rayfield UI 库加载失败")
-    return
-end
-
--- ==================== 2. 服务与玩家 ====================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local UserInputService = game:GetService("UserInputService")
-local setclipboard = setclipboard or function(text) print("复制到剪贴板: " .. text) end
+local setclipboard = setclipboard or function(t) print("复制到剪贴板:", t) end
 
 local P = Players.LocalPlayer
 local PG = P:WaitForChild("PlayerGui")
 local char = P.Character or P.CharacterAdded:Wait()
 local humanoid = char:WaitForChild("Humanoid")
-local humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+local HRP = char:WaitForChild("HumanoidRootPart")
 local backpack = P:WaitForChild("Backpack")
 
--- ==================== 3. 全局状态表 ====================
-local S = "_S_"
+local S = "_GS_"
 _G[S] = {
-    A = true,
-    Running = true,
-    -- 废料透视
-    F_Scrap = false,
-    Filter_Scrap = false,
-    -- 天气球透视
-    F_Orb = false,
-    Filter_Orb = false,
-    -- 礼物透视
+    A = true, Running = true,
+    F_Scrap = false, Filter_Scrap = false,
+    F_Orb = false, Filter_Orb = false,
     GiftESP = false,
-    -- 实体透视
     E = false,
-    -- 无限体力
     Stamina = false,
-    -- 夜视除雾（亮度调整为1）
-    Vision = false,
-    -- 自动跳
+    Vision = false, VisionBright = 1,
     AJ = false,
-    -- 显示时间
     ShowTime = false,
-    -- 传送系统
     TeleportEnabled = false,
-    -- 武器系统
-    WeaponModEnabled = false,
-    CustomWeaponCooldowns = {}, -- 存储自定义武器无冷却设置
+    WeaponModEnabled = false, CustomWeaponCooldowns = {},
 }
 
--- ==================== 4. 配置表（物品名称保留原文） ====================
-local ScrapConfig = {
-    {N="WHAT", C=Color3.fromRGB(255,0,0)},
-    {N="GODLY", C=Color3.fromRGB(255,255,255)},
-    {N="TYPHOON", C=Color3.fromRGB(255,0,150)},
-    {N="THUNDEROUS", C=Color3.fromRGB(255,50,50)},
-    {N="Emerald", C=Color3.fromRGB(0,255,0)},
-    {N="Somber", C=Color3.fromRGB(50,50,50)},
-    {N="Diamond", C=Color3.fromRGB(0,191,255)},
-    {N="Gold", C=Color3.fromRGB(255,215,0)},
-    {N="Metal", C=Color3.fromRGB(230,230,230)},
-    {N="Drenched", C=Color3.fromRGB(0,100,100)},
-    {N="Rusty", C=Color3.fromRGB(139,69,19)},
-    {N="Orb of Aurora", C=Color3.fromRGB(75,0,130), L="AURORA", IsOrb=true},
-    {N="Orb of Dreams", C=Color3.fromRGB(255,100,200), L="DREAMS", IsOrb=true},
-    {N="Orb of Shadow", C=Color3.fromRGB(20,20,20), L="SHADOW", IsOrb=true},
-    {N="Orb of Thunder", C=Color3.fromRGB(255,255,0), L="THUNDER", IsOrb=true},
-    {N="Orb of Wind", C=Color3.fromRGB(255,255,255), L="WIND", IsOrb=true},
-    {N="Orb of the Sea", C=Color3.fromRGB(0,0,139), L="THE SEA", IsOrb=true},
-    {N="Orb of Rain", C=Color3.fromRGB(135,206,250), L="RAIN", IsOrb=true},
-    {N="Orb of the Sun", C=Color3.fromRGB(255,165,0), L="THE SUN", IsOrb=true},
-}
-
-local function GetMatch(Model)
-    for _, Conf in ipairs(ScrapConfig) do
-        if Model.Name:find(Conf.N) then
-            return Conf
-        end
-    end
-    return nil
-end
-
--- ==================== 5. 废料 / 天气球 / 礼物透视核心 ====================
-local function ProcessScraps()
-    if not _G[S].A then return end
-    local F = workspace:FindFirstChild("Storage") and workspace.Storage:FindFirstChild("Map") and workspace.Storage.Map:FindFirstChild("Scraps")
-    if not F then return end
-
-    -- 礼物透视（检测Part，名称以"Gift"结尾）
-    if _G[S].GiftESP then
-        local function ProcessPart(part)
-            if part:IsA("Part") and string.sub(part.Name, -4) == "Gift" then
-                local B = part:FindFirstChild("B_Gift_"..S)
-                if not B then
-                    B = Instance.new("BillboardGui")
-                    B.Name = "B_Gift_"..S
-                    B.Size = UDim2.new(0, 120, 0, 40)
-                    B.StudsOffset = Vector3.new(0, 3, 0)
-                    B.AlwaysOnTop = true
-                    B.Adornee = part
-                    B.Parent = part
-                    
-                    local L = Instance.new("TextLabel")
-                    L.Size = UDim2.new(1,0,1,0)
-                    L.BackgroundTransparency = 1
-                    L.Text = "🎁 " .. part.Name -- 显示完整的礼物名称
-                    L.TextColor3 = Color3.fromRGB(255, 215, 0) -- 金色
-                    L.TextStrokeTransparency = 0.2
-                    L.Font = Enum.Font.GothamBold
-                    L.TextSize = 18
-                    L.Parent = B
-                end
-            end
-        end
-        
-        -- 递归处理所有Part
-        local function ScanForParts(parent)
-            for _, child in pairs(parent:GetChildren()) do
-                if child:IsA("Part") then
-                    ProcessPart(child)
-                elseif child:IsA("Model") or child:IsA("Folder") then
-                    ScanForParts(child)
-                end
-            end
-        end
-        
-        ScanForParts(F)
-    else
-        -- 关闭礼物透视时清理标签
-        local function CleanGiftLabels(parent)
-            for _, child in pairs(parent:GetChildren()) do
-                local B = child:FindFirstChild("B_Gift_"..S)
-                if B then B:Destroy() end
-                if child:IsA("Model") or child:IsA("Folder") then
-                    CleanGiftLabels(child)
-                end
-            end
-        end
-        CleanGiftLabels(F)
-    end
-
-    -- 废料和天气球透视
-    for _, M in pairs(F:GetChildren()) do
-        if M:IsA("Model") then
-            local Match = GetMatch(M)
-            if Match then
-                local isOrb = Match.IsOrb
-                local shouldShow = false
-
-                if isOrb then
-                    if _G[S].F_Orb then
-                        if _G[S].Filter_Orb then
-                            local RareNames = {"AURORA", "DREAMS", "SHADOW", "THE SEA", "THE SUN"}
-                            if table.find(RareNames, Match.L) then
-                                shouldShow = true
-                            end
-                        else
-                            shouldShow = true
-                        end
-                    end
-                else
-                    if _G[S].F_Scrap then
-                        if _G[S].Filter_Scrap and (Match.N=="Metal" or Match.N=="Rusty" or Match.N=="Drenched") then
-                            shouldShow = false
-                        else
-                            shouldShow = true
-                        end
-                    end
-                end
-
-                if shouldShow then
-                    local BasePart = M:FindFirstChildWhichIsA("BasePart")
-                    if BasePart then
-                        local B = M:FindFirstChild("B_"..S)
-                        if not B then
-                            B = Instance.new("BillboardGui")
-                            B.Name = "B_"..S
-                            B.Size = UDim2.new(0, 95, 0, 34)
-                            B.StudsOffset = Vector3.new(0, 3, 0)
-                            B.AlwaysOnTop = true
-                            B.Adornee = BasePart
-                            B.Parent = M
-                            local L = Instance.new("TextLabel")
-                            L.Size = UDim2.new(1,0,1,0)
-                            L.BackgroundTransparency = 1
-                            L.Text = Match.L or Match.N
-                            L.TextColor3 = Match.C
-                            L.TextStrokeTransparency = 0.2
-                            L.Font = Enum.Font.GothamBold
-                            L.TextSize = 20
-                            L.Parent = B
-                        end
-                    end
-                else
-                    local B = M:FindFirstChild("B_"..S)
-                    if B then B:Destroy() end
-                end
-            end
-        end
-    end
-end
-
--- 清理背包/角色上的标签
-task.spawn(function()
-    while _G[S].Running do
-        pcall(function()
-            local containers = {P.Backpack, P.Character}
-            for _, container in ipairs(containers) do
-                if container then
-                    for _, item in ipairs(container:GetChildren()) do
-                        if item:IsA("Model") and GetMatch(item) then
-                            local B = item:FindFirstChild("B_"..S)
-                            if B then B:Destroy() end
-                        end
-                    end
-                end
-            end
-        end)
-        task.wait(0.2)
-    end
-end)
-
-task.spawn(function()
-    while _G[S].A do
-        pcall(ProcessScraps)
-        task.wait(0.5)
-    end
-end)
-
--- ==================== 6. 实体透视（带距离颜色） ====================
-local EP = workspace:FindFirstChild("Entities") or workspace
-local DistColors = {
-    {M=450, C=Color3.fromHex("#22c55e")},
-    {M=320, C=Color3.fromHex("#84cc16")},
-    {M=210, C=Color3.fromHex("#eab308")},
-    {M=105, C=Color3.fromHex("#f97316")},
-    {M=0,   C=Color3.fromHex("#ef4444")},
-}
-local EH = {}
-local EL = {}
-
-local function GetDistColor(D)
-    for _, R in ipairs(DistColors) do
-        if D >= R.M then return R.C end
-    end
-    return DistColors[#DistColors].C
-end
-
-local function GetEntityPos(E)
-    if E:IsA("Model") then
-        if E.PrimaryPart then return E.PrimaryPart.Position end
-        if E:FindFirstChild("HumanoidRootPart") then return E.HumanoidRootPart.Position end
-        if E:FindFirstChild("Torso") then return E.Torso.Position end
-    elseif E:IsA("BasePart") then
-        return E.Position
-    end
-    return nil
-end
-
-local function CreateHighlight(E)
-    if EH[E] then return EH[E] end
-    local H = Instance.new("Highlight")
-    H.Name = "ESP_H_"..S
-    H.Adornee = E
-    H.FillColor = Color3.fromRGB(240,30,30)
-    H.OutlineColor = Color3.fromRGB(235,235,235)
-    H.FillTransparency = 0.43
-    H.OutlineTransparency = 0
-    H.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    H.Parent = E
-    EH[E] = H
-    return H
-end
-
-local function CreateLabel(E)
-    if EL[E] then return EL[E] end
-    local B = Instance.new("BillboardGui")
-    B.Name = "DistanceLabel"
-    B.Size = UDim2.new(0, 140, 0, 40)
-    B.StudsOffset = Vector3.new(0, 4, 0)
-    B.AlwaysOnTop = true
-    local T = Instance.new("TextLabel")
-    T.Name = "DistanceText"
-    T.Size = UDim2.new(1,0,1,0)
-    T.BackgroundTransparency = 1
-    T.TextSize = 22
-    T.Font = Enum.Font.GothamBold
-    T.TextStrokeTransparency = 0
-    T.TextStrokeColor3 = Color3.new(0,0,0)
-    T.Parent = B
-    B.Parent = E
-    EL[E] = B
-    return B
-end
-
-local function CleanEntities(C)
-    for E, _ in pairs(EH) do
-        if not table.find(C, E) or not E.Parent then
-            if EH[E] then EH[E]:Destroy(); EH[E] = nil end
-            if EL[E] then EL[E]:Destroy(); EL[E] = nil end
-        end
-    end
-end
-
-local function RefreshEntityESP()
-    if not _G[S].E then return end
-    if not EP then return end
-
-    local ET = {}
-    for _, C in ipairs(EP:GetChildren()) do
-        if C:IsA("Model") or C:IsA("BasePart") then table.insert(ET, C) end
-    end
-
-    local PP = P.Character and P.Character:FindFirstChild("HumanoidRootPart") and P.Character.HumanoidRootPart.Position
-    for _, E in ipairs(ET) do
-        local Pos = GetEntityPos(E)
-        if Pos and PP then
-            local D = (Pos - PP).Magnitude
-            local C = GetDistColor(D)
-            local H = CreateHighlight(E)
-            H.FillColor = C
-            H.OutlineColor = Color3.fromRGB(235,235,235)
-            local L = CreateLabel(E)
-            local T = L:FindFirstChild("DistanceText")
-            if T then
-                T.Text = string.format("%.1f m", D)
-                T.TextColor3 = C
-            end
-        end
-    end
-    CleanEntities(ET)
-end
-
-task.spawn(function()
-    while _G[S].Running do
-        pcall(RefreshEntityESP)
-        task.wait(2)
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if not _G[S].E then return end
-    local PP = P.Character and P.Character:FindFirstChild("HumanoidRootPart") and P.Character.HumanoidRootPart.Position
-    if not PP then return end
-    for E, B in pairs(EL) do
-        if E and E.Parent then
-            local Pos = GetEntityPos(E)
-            if Pos then
-                local D = (Pos - PP).Magnitude
-                local C = GetDistColor(D)
-                local T = B:FindFirstChild("DistanceText")
-                if T then
-                    T.Text = string.format("%.1f m", D)
-                    T.TextColor3 = C
-                end
-                local H = EH[E]
-                if H then
-                    H.FillColor = C
-                end
-            end
-        end
-    end
-end)
-
--- ==================== 7. 无限体力 ====================
-local staminaConnection = nil
-local staminaInstance = nil
-
-local function findStamina()
-    local modules = ReplicatedStorage:FindFirstChild("Modules")
-    if not modules then return nil end
-    local uibased = modules:FindFirstChild("UIbased")
-    if not uibased then return nil end
-    local staminaFolder = uibased:FindFirstChild("Stamina")
-    if not staminaFolder then return nil end
-    local staminaObj = staminaFolder:FindFirstChild("Stamina")
-    if staminaObj and (staminaObj:IsA("NumberValue") or staminaObj:IsA("IntValue")) then
-        return staminaObj
-    end
-    return nil
-end
-
-local function setInfiniteStamina(enabled)
-    if enabled then
-        if not staminaInstance then staminaInstance = findStamina() end
-        if staminaInstance then
-            if staminaConnection then staminaConnection:Disconnect() end
-            staminaConnection = RunService.Heartbeat:Connect(function()
-                if _G[S].Stamina and staminaInstance then
-                    staminaInstance.Value = 99
-                end
-            end)
-        end
-    else
-        if staminaConnection then staminaConnection:Disconnect(); staminaConnection = nil end
-    end
-end
-
--- ==================== 8. 夜视除雾（亮度调整为1的版本） ====================
-local visionConnection = nil
-local originalBrightness = Lighting.Brightness
-local originalFogEnd = Lighting.FogEnd
-local originalFogStart = Lighting.FogStart
-local originalAmbient = Lighting.Ambient
-local originalOutdoorAmbient = Lighting.OutdoorAmbient
-local originalClockTime = Lighting.ClockTime
-local originalExposureCompensation = Lighting.ExposureCompensation
-
-local function startVisionLoop()
-    if visionConnection then visionConnection:Disconnect() end
-    
-    visionConnection = RunService.RenderStepped:Connect(function()
-        if _G[S].Vision then
-            -- 亮度调整为1的夜视效果
-            Lighting.Brightness = 1 -- 亮度调整为1
-            Lighting.FogEnd = 999999 -- 彻底除雾
-            Lighting.FogStart = 0
-            Lighting.Ambient = Color3.fromRGB(200, 200, 200) -- 较亮的环境光
-            Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200) -- 室外也是较亮
-            Lighting.ClockTime = 14 -- 下午时间，光线充足
-            Lighting.ExposureCompensation = 0.5 -- 适度曝光
-        end
-    end)
-end
-
-local function stopVisionLoop()
-    if visionConnection then
-        visionConnection:Disconnect()
-        visionConnection = nil
-    end
-    -- 恢复原始设置
-    Lighting.Brightness = originalBrightness
-    Lighting.FogEnd = originalFogEnd
-    Lighting.FogStart = originalFogStart
-    Lighting.Ambient = originalAmbient
-    Lighting.OutdoorAmbient = originalOutdoorAmbient
-    Lighting.ClockTime = originalClockTime
-    Lighting.ExposureCompensation = originalExposureCompensation
-end
-
--- ==================== 9. 自动跳 ====================
-local gameJumpFunction = nil
-local isJumping = false
-
-P.CharacterAdded:Connect(function(newChar)
-    char = newChar
-    humanoid = newChar:WaitForChild("Humanoid")
-end)
-
-local function findGameJumpLogic()
-    local potentialTargets = {
-        game.ReplicatedStorage:FindFirstChild("Remotes"),
-        game:GetService("StarterPlayer").StarterPlayerScripts,
-        _G
-    }
-    for _, target in ipairs(potentialTargets) do
-        if target then
-            for _, obj in pairs(target:GetDescendants()) do
-                if obj:IsA("RemoteEvent") and (string.find(obj.Name, "Jump") or string.find(obj.Name, "Bunny")) then
-                    gameJumpFunction = function()
-                        pcall(function() obj:FireServer() end)
-                    end
-                    return
-                end
-            end
-        end
-    end
-end
-findGameJumpLogic()
-
-local function performJump()
-    if gameJumpFunction then
-        gameJumpFunction()
-    else
-        if humanoid:GetState() == Enum.HumanoidStateType.Freefall or
-           humanoid:GetState() == Enum.HumanoidStateType.Jumping then return end
-        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
-    end
-end
-
-RunService.Heartbeat:Connect(function()
-    if not _G[S].AJ then return end
-    if not humanoid then return end
-    local isGrounded = humanoid.FloorMaterial ~= Enum.Material.Air
-    if isGrounded then isJumping = false end
-    if not isJumping and isGrounded then
-        performJump()
-        isJumping = true
-    end
-end)
-
--- ==================== 10. 显示时间功能 ====================
-local TimeGui = nil
-local TimeLabel = nil
-
-local function CreateTimeDisplay()
-    if TimeGui and TimeGui.Parent then
-        TimeGui.Enabled = _G[S].ShowTime
-        return
-    end
-
-    TimeGui = Instance.new("ScreenGui")
-    TimeGui.Name = "TimeDisplayGUI"
-    TimeGui.ResetOnSpawn = false
-    TimeGui.Parent = PG
-    TimeGui.Enabled = _G[S].ShowTime
-
-    local Frame = Instance.new("Frame")
-    Frame.Name = "TimeFrame"
-    Frame.Size = UDim2.new(0, 185, 0, 46)
-    Frame.Position = UDim2.new(0, 12, 1, -62)
-    Frame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-    Frame.BackgroundTransparency = 0.03
-    Frame.BorderSizePixel = 0
-    Frame.Parent = TimeGui
-    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 12)
-
-    local Stroke = Instance.new("UIStroke")
-    Stroke.Color = Color3.fromRGB(158, 198, 172)
-    Stroke.Thickness = 1.8
-    Stroke.Transparency = 0.47
-    Stroke.Parent = Frame
-
-    TimeLabel = Instance.new("TextLabel")
-    TimeLabel.Name = "TimeLabel"
-    TimeLabel.Size = UDim2.new(1, -10, 1, 0)
-    TimeLabel.Position = UDim2.new(0, 5, 0, 0)
-    TimeLabel.BackgroundTransparency = 1
-    TimeLabel.Text = "0"
-    TimeLabel.TextColor3 = Color3.fromRGB(192, 228, 208)
-    TimeLabel.TextSize = 30
-    TimeLabel.Font = Enum.Font.GothamBold
-    TimeLabel.TextXAlignment = Enum.TextXAlignment.Center
-    TimeLabel.Parent = Frame
-end
-
-local function UpdateTimeDisplay()
-    if not _G[S].ShowTime then
-        if TimeGui then TimeGui.Enabled = false end
-        return
-    end
-
-    if not TimeGui or not TimeGui.Parent then
-        CreateTimeDisplay()
-    end
-
-    TimeGui.Enabled = true
-
-    -- 从指定路径获取时间：ReplicatedStorage/Values/currentTime
-    local currentTime = 0
-    local valuesFolder = ReplicatedStorage:FindFirstChild("Values")
-    if valuesFolder then
-        local currentTimeObject = valuesFolder:FindFirstChild("currentTime")
-        if currentTimeObject and currentTimeObject:IsA("NumberValue") then
-            currentTime = currentTimeObject.Value
-        end
-    end
-
-    if TimeLabel then
-        TimeLabel.Text = tostring(math.floor(currentTime))
-    end
-end
-
-task.spawn(function()
-    while _G[S].Running do
-        pcall(UpdateTimeDisplay)
-        task.wait(1)
-    end
-end)
-
--- ==================== 11. 传送系统 ====================
-local Locations = {
-    {Name = "商店", X = 461.6, Y = 107.8, Z = 322.6},
-    {Name = "海滩", X = -296.7, Y = 139.9, Z = 913.0}, -- 原湖泊位置作为海滩
-}
-
-local function TeleportToLocation(X, Y, Z)
-    if P.Character and P.Character:FindFirstChild("HumanoidRootPart") then
-        P.Character.HumanoidRootPart.CFrame = CFrame.new(X, Y, Z)
-    end
-end
-
--- ==================== 12. 武器系统 ====================
-local customWeaponInput = ""
-
--- 武器修改函数 - 支持所有武器
-local function modifyAllWeapons()
-    local count = 0
-    
-    local function processTool(tool)
-        if tool:IsA("Tool") then
-            local toolName = tool.Name
-            
-            -- 将所有武器的冷却时间设置为-1（无冷却）
-            if tool:GetAttribute("Swingrate") ~= nil then
-                tool:SetAttribute("Swingrate", -1)
-                count = count + 1
-            end
-        end
-    end
-    
-    -- 扫描背包和角色身上的道具
-    for _, tool in ipairs(backpack:GetChildren()) do processTool(tool) end
-    for _, tool in ipairs(char:GetChildren()) do processTool(tool) end
-    
-    return count
-end
-
--- 清理垃圾道具函数
-local function cleanJunkItems()
-    local count = 0
-    local junkItems = {
-        "Orb of Shadow", "Orb of Thunder", "Orb of Rain", 
-        "Orb of Wind", "Vitamins", "Damaged Stun Stick"
-    }
-    
-    local function checkAndDestroy(item)
-        if item:IsA("Tool") then
-            for _, junkName in ipairs(junkItems) do
-                if item.Name == junkName then
-                    item:Destroy()
-                    count = count + 1
-                    break
-                end
-            end
-        end
-    end
-    
-    for _, item in ipairs(backpack:GetChildren()) do checkAndDestroy(item) end
-    for _, item in ipairs(char:GetChildren()) do checkAndDestroy(item) end
-    
-    return count
-end
-
--- ==================== 13. Rayfield UI 构建 ====================
 local Window = Rayfield:CreateWindow({
     Name = "幽灵生存脚本 v.beta",
     LoadingTitle = "加载中...",
@@ -658,316 +37,291 @@ local Window = Rayfield:CreateWindow({
     ConfigurationSaving = { Enabled = false }
 })
 
--- 标签页
+local ScrapConfig = {
+    {N="WHAT",C=Color3.fromRGB(255,0,0)}, {N="GODLY",C=Color3.fromRGB(255,255,255)},
+    {N="TYPHOON",C=Color3.fromRGB(255,0,150)}, {N="THUNDEROUS",C=Color3.fromRGB(255,50,50)},
+    {N="Emerald",C=Color3.fromRGB(0,255,0)}, {N="Somber",C=Color3.fromRGB(50,50,50)},
+    {N="Diamond",C=Color3.fromRGB(0,191,255)}, {N="Gold",C=Color3.fromRGB(255,215,0)},
+    {N="Metal",C=Color3.fromRGB(230,230,230)}, {N="Drenched",C=Color3.fromRGB(0,100,100)},
+    {N="Rusty",C=Color3.fromRGB(139,69,19)},
+    {N="Orb of Aurora",C=Color3.fromRGB(75,0,130),L="AURORA",IsOrb=true},
+    {N="Orb of Dreams",C=Color3.fromRGB(255,100,200),L="DREAMS",IsOrb=true},
+    {N="Orb of Shadow",C=Color3.fromRGB(20,20,20),L="SHADOW",IsOrb=true},
+    {N="Orb of Thunder",C=Color3.fromRGB(255,255,0),L="THUNDER",IsOrb=true},
+    {N="Orb of Wind",C=Color3.fromRGB(255,255,255),L="WIND",IsOrb=true},
+    {N="Orb of the Sea",C=Color3.fromRGB(0,0,139),L="THE SEA",IsOrb=true},
+    {N="Orb of Rain",C=Color3.fromRGB(135,206,250),L="RAIN",IsOrb=true},
+    {N="Orb of the Sun",C=Color3.fromRGB(255,165,0),L="THE SUN",IsOrb=true},
+}
+local function GetMatch(m) for _,c in ipairs(ScrapConfig) do if m.Name:find(c.N) then return c end end end
+
+local function ProcessScraps()
+    if not _G[S].A then return end
+    local F = workspace:FindFirstChild("Storage") and workspace.Storage:FindFirstChild("Map") and workspace.Storage.Map:FindFirstChild("Scraps")
+    if not F then return end
+    if _G[S].GiftESP then
+        local function Scan(parent)
+            for _,ch in ipairs(parent:GetChildren()) do
+                if ch:IsA("Part") and string.sub(ch.Name,-4)=="Gift" then
+                    if not ch:FindFirstChild("B_Gift_"..S) then
+                        local B = Instance.new("BillboardGui")
+                        B.Name="B_Gift_"..S; B.Size=UDim2.new(0,120,0,40); B.StudsOffset=Vector3.new(0,3,0)
+                        B.AlwaysOnTop=true; B.Adornee=ch; B.Parent=ch
+                        local L=Instance.new("TextLabel")
+                        L.Size=UDim2.new(1,0,1,0); L.BackgroundTransparency=1
+                        L.Text="🎁 "..ch.Name; L.TextColor3=Color3.fromRGB(255,215,0)
+                        L.TextStrokeTransparency=0.2; L.Font=Enum.Font.GothamBold; L.TextSize=18; L.Parent=B
+                    end
+                elseif not ch:IsA("BasePart") then
+                    Scan(ch)
+                end
+            end
+        end
+        Scan(F)
+    else
+        local function Cl(parent)
+            for _,ch in ipairs(parent:GetChildren()) do
+                local b=ch:FindFirstChild("B_Gift_"..S); if b then b:Destroy() end
+                if not ch:IsA("BasePart") then Cl(ch) end
+            end
+        end; Cl(F)
+    end
+    for _,M in ipairs(F:GetChildren()) do
+        if M:IsA("Model") then
+            local mt=GetMatch(M); if not mt then continue end
+            local isOrb=mt.IsOrb; local show=false
+            if isOrb then
+                if _G[S].F_Orb then
+                    if _G[S].Filter_Orb then
+                        local r={"AURORA","DREAMS","SHADOW","THE SEA","THE SUN"}
+                        if table.find(r,mt.L) then show=true end
+                    else show=true end
+                end
+            else
+                if _G[S].F_Scrap then
+                    if _G[S].Filter_Scrap and (mt.N=="Metal" or mt.N=="Rusty" or mt.N=="Drenched") then show=false else show=true end
+                end
+            end
+            if show then
+                local bp=M:FindFirstChildWhichIsA("BasePart")
+                if bp and not M:FindFirstChild("B_"..S) then
+                    local B=Instance.new("BillboardGui")
+                    B.Name="B_"..S;B.Size=UDim2.new(0,95,0,34);B.StudsOffset=Vector3.new(0,3,0)
+                    B.AlwaysOnTop=true;B.Adornee=bp;B.Parent=M
+                    local L=Instance.new("TextLabel")
+                    L.Size=UDim2.new(1,0,1,0);L.BackgroundTransparency=1
+                    L.Text=mt.L or mt.N;L.TextColor3=mt.C
+                    L.TextStrokeTransparency=0.2;L.Font=Enum.Font.GothamBold;L.TextSize=20;L.Parent=B
+                end
+            else
+                local b=M:FindFirstChild("B_"..S);if b then b:Destroy() end
+            end
+        end
+    end
+end
+
+local EP = workspace:FindFirstChild("Entities") or workspace
+local DistC = {{450,Color3.fromHex("#22c55e")},{320,Color3.fromHex("#84cc16")},{210,Color3.fromHex("#eab308")},{105,Color3.fromHex("#f97316")},{0,Color3.fromHex("#ef4444")}}
+local EH,EL={},{}
+local function GDC(d) for _,r in ipairs(DistC) do if d>=r[1] then return r[2] end end end
+local function GEP(e)
+    if e:IsA("Model") then
+        if e.PrimaryPart then return e.PrimaryPart.Position end
+        if e:FindFirstChild("HumanoidRootPart") then return e.HumanoidRootPart.Position end
+        if e:FindFirstChild("Torso") then return e.Torso.Position end
+    elseif e:IsA("BasePart") then return e.Position end
+end
+
+local function RefreshESP()
+    if not _G[S].E then return end
+    local et={}
+    for _,c in ipairs(EP:GetChildren()) do if c:IsA("Model") or c:IsA("BasePart") then table.insert(et,c) end end
+    local pp=HRP and HRP.Position; if not pp then return end
+    for _,E in ipairs(et) do
+        local pos=GEP(E); if not pos then continue end
+        local d=(pos-pp).Magnitude; local c=GDC(d)
+        local H=EH[E]
+        if not H then
+            H=Instance.new("Highlight");H.Name="ESP_H_"..S;H.Adornee=E;H.FillColor=c
+            H.OutlineColor=Color3.fromRGB(235,235,235);H.FillTransparency=0.43
+            H.OutlineTransparency=0;H.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop;H.Parent=E
+            EH[E]=H
+            local B=Instance.new("BillboardGui");B.Name="DistanceLabel";B.Size=UDim2.new(0,140,0,40)
+            B.StudsOffset=Vector3.new(0,4,0);B.AlwaysOnTop=true;B.Parent=E
+            local T=Instance.new("TextLabel");T.Name="DistanceText";T.Size=UDim2.new(1,0,1,0)
+            T.BackgroundTransparency=1;T.TextSize=22;T.Font=Enum.Font.GothamBold
+            T.TextStrokeTransparency=0;T.TextStrokeColor3=Color3.new(0,0,0);T.Parent=B
+            EL[E]=B
+        else H.FillColor=c end
+        local T=EL[E] and EL[E]:FindFirstChild("DistanceText")
+        if T then T.Text=string.format("%.1f m",d);T.TextColor3=c end
+    end
+    for E in pairs(EH) do
+        if not table.find(et,E) or not E.Parent then
+            if EH[E] then EH[E]:Destroy() end
+            if EL[E] then EL[E]:Destroy() end
+            EH[E]=nil;EL[E]=nil
+        end
+    end
+end
+
+local function findStam()
+    local m=ReplicatedStorage:FindFirstChild("Modules")
+    if not m then return end
+    local u=m:FindFirstChild("UIbased")
+    if u and u:FindFirstChild("Stamina") and u.Stamina:FindFirstChild("Stamina") then
+        return u.Stamina.Stamina
+    end
+end
+local stamInst,stamConn=nil,nil
+local function setStam(v)
+    if v then
+        stamInst=stamInst or findStam()
+        if stamInst and not stamConn then
+            stamConn=RunService.Heartbeat:Connect(function()
+                if _G[S].Stamina then stamInst.Value=100 end
+            end)
+        end
+    else if stamConn then stamConn:Disconnect() stamConn=nil end end
+end
+
+local oB=Lighting.Brightness; local lFE=Lighting.FogEnd; local lFS=Lighting.FogStart
+local oA=Lighting.Ambient; local oOA=Lighting.OutdoorAmbient; local oC=Lighting.ClockTime; local oE=Lighting.ExposureCompensation
+local visConn
+local function startVis()
+    if visConn then return end
+    visConn=RunService.RenderStepped:Connect(function()
+        if _G[S].Vision then
+            Lighting.Brightness=_G[S].VisionBright
+            Lighting.FogEnd=999999; Lighting.FogStart=0
+            Lighting.Ambient=Color3.fromRGB(200,200,200)
+            Lighting.OutdoorAmbient=Color3.fromRGB(200,200,200)
+            Lighting.ClockTime=14; Lighting.ExposureCompensation=0.5
+        end
+    end)
+end
+local function stopVis()
+    if visConn then visConn:Disconnect() visConn=nil end
+    Lighting.Brightness=oB; Lighting.FogEnd=lFE; Lighting.FogStart=lFS
+    Lighting.Ambient=oA; Lighting.OutdoorAmbient=oOA; Lighting.ClockTime=oC; Lighting.ExposureCompensation=oE
+end
+
+local ajFn=nil
+pcall(function()
+    for _,p in ipairs({ReplicatedStorage:FindFirstChild("Remotes"),game:GetService("StarterPlayer").StarterPlayerScripts,_G}) do
+        if not p then continue end
+        for _,o in ipairs(p:GetDescendants()) do
+            if o:IsA("RemoteEvent") and (o.Name:find("Jump") or o.Name:find("Bunny")) then
+                ajFn=function() pcall(function() o:FireServer() end) end return
+            end
+        end
+    end
+end)
+local jumping=false
+RunService.Heartbeat:Connect(function()
+    if not _G[S].AJ then return end
+    if not humanoid then return end
+    if humanoid.FloorMaterial~=Enum.Material.Air then jumping=false end
+    if not jumping and humanoid.FloorMaterial~=Enum.Material.Air then
+        if ajFn then ajFn() else pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+        jumping=true
+    end
+end)
+P.CharacterAdded:Connect(function(c) char=c; humanoid=c:WaitForChild("Humanoid"); HRP=c:WaitForChild("HumanoidRootPart") end)
+
+local TG,TL=nil,nil
+local function MakeTime()
+    if TG and TG.Parent then TG.Enabled=_G[S].ShowTime return end
+    TG=Instance.new("ScreenGui");TG.Name="TimeGUI_"..S;TG.ResetOnSpawn=false;TG.Parent=PG;TG.Enabled=_G[S].ShowTime
+    local F=Instance.new("Frame");F.Size=UDim2.new(0,185,0,46);F.Position=UDim2.new(0,12,1,-62)
+    F.BackgroundColor3=Color3.fromRGB(22,22,22);F.BackgroundTransparency=0.03;F.BorderSizePixel=0;F.Parent=TG
+    Instance.new("UICorner",F).CornerRadius=UDim.new(0,12)
+    local st=Instance.new("UIStroke");st.Color=Color3.fromRGB(158,198,172);st.Thickness=1.8;st.Transparency=0.47;st.Parent=F
+    TL=Instance.new("TextLabel");TL.Size=UDim2.new(1,-10,1,0);TL.Position=UDim2.new(0,5,0,0)
+    TL.BackgroundTransparency=1;TL.Text="0";TL.TextColor3=Color3.fromRGB(192,228,208)
+    TL.TextSize=30;TL.Font=Enum.Font.GothamBold;TL.TextXAlignment=Enum.TextXAlignment.Center;TL.Parent=F
+end
+task.spawn(function()
+    while _G[S].A do
+        if _G[S].ShowTime then
+            MakeTime(); TG.Enabled=true
+            local vf=ReplicatedStorage:FindFirstChild("Values")
+            if vf and vf:FindFirstChild("currentTime") and vf.currentTime:IsA("NumberValue") then
+                TL.Text=tostring(math.floor(vf.currentTime.Value))
+            end
+        elseif TG then TG.Enabled=false end
+        task.wait(1)
+    end
+end)
+
+local Locs={{Name="商店",X=461.6,Y=107.8,Z=322.6},{Name="海滩",X=-296.7,Y=139.9,Z=913.0}}
+local function TP(x,y,z) if HRP then HRP.CFrame=CFrame.new(x,y,z) end end
+
+local function ModWeap()
+    local c=0
+    local function p(t) if t:IsA("Tool") and t:GetAttribute("Swingrate")~=nil then t:SetAttribute("Swingrate",-1) c+=1 end end
+    for _,t in ipairs(backpack:GetChildren()) do p(t) end
+    for _,t in ipairs(char:GetChildren()) do p(t) end
+    return c
+end
+local function CleanJunk()
+    local c=0
+    local ji={"Orb of Shadow","Orb of Thunder","Orb of Rain","Orb of Wind","Vitamins","Damaged Stun Stick"}
+    local function p(i) if i:IsA("Tool") then for _,n in ipairs(ji) do if i.Name==n then i:Destroy() c+=1 break end end end end
+    for _,i in ipairs(backpack:GetChildren()) do p(i) end
+    for _,i in ipairs(char:GetChildren()) do p(i) end
+    return c
+end
+local weapInput=""
+
 local MainTab = Window:CreateTab("主要", 4483362458)
 local ScrapTab = Window:CreateTab("废料透视", 4483362458)
-local EntityTab = Window:CreateTab("实体透视", 4483362458)
-local TeleportTab = Window:CreateTab("传送系统", 4483362458)
-local WeaponTab = Window:CreateTab("武器系统", 4483362458)
+local EspTab = Window:CreateTab("实体透视", 4483362458)
+local TpTab = Window:CreateTab("传送系统", 4483362458)
+local WeapTab = Window:CreateTab("武器系统", 4483362458)
 local AboutTab = Window:CreateTab("关于", 4483362458)
 local OtherTab = Window:CreateTab("其他", 4483362458)
 
--- ===== 主要标签页 =====
-MainTab:CreateToggle({
-    Name = "废料透视",
-    CurrentValue = _G[S].F_Scrap,
-    Flag = "ScrapToggle",
-    Callback = function(v)
-        _G[S].F_Scrap = v
-        pcall(ProcessScraps)
-    end
-})
+MainTab:CreateToggle({Name="废料透视",CurrentValue=false,Callback=function(v) _G[S].F_Scrap=v;pcall(ProcessScraps) end})
+MainTab:CreateToggle({Name="天气球透视",CurrentValue=false,Callback=function(v) _G[S].F_Orb=v;pcall(ProcessScraps) end})
+MainTab:CreateToggle({Name="礼物透视",CurrentValue=false,Callback=function(v) _G[S].GiftESP=v;pcall(ProcessScraps) end})
+MainTab:CreateToggle({Name="实体透视",CurrentValue=false,Callback=function(v) _G[S].E=v; if not v then for E in pairs(EH) do if EH[E] then EH[E]:Destroy() end if EL[E] then EL[E]:Destroy() end EH[E]=nil;EL[E]=nil end end end})
+MainTab:CreateToggle({Name="无限体力 (100%)",CurrentValue=false,Callback=function(v) _G[S].Stamina=v;setStam(v) end})
+MainTab:CreateSlider({Name="夜视亮度",Range={0.5,3},Increment=0.1,CurrentValue=1,Callback=function(v) _G[S].VisionBright=v end})
+MainTab:CreateToggle({Name="夜视除雾",CurrentValue=false,Callback=function(v) _G[S].Vision=v; if v then startVis() else stopVis() end end})
+MainTab:CreateToggle({Name="自动跳跃",CurrentValue=false,Callback=function(v) _G[S].AJ=v end})
+MainTab:CreateToggle({Name="显示时间(左下)",CurrentValue=false,Callback=function(v) _G[S].ShowTime=v; if v then MakeTime() else if TG then TG.Enabled=false end end end})
 
-MainTab:CreateToggle({
-    Name = "天气球透视",
-    CurrentValue = _G[S].F_Orb,
-    Flag = "OrbToggle",
-    Callback = function(v)
-        _G[S].F_Orb = v
-        pcall(ProcessScraps)
-    end
-})
+ScrapTab:CreateToggle({Name="过滤低级废料",CurrentValue=false,Callback=function(v) _G[S].Filter_Scrap=v;pcall(ProcessScraps) end})
+ScrapTab:CreateToggle({Name="仅稀有天气球",CurrentValue=false,Callback=function(v) _G[S].Filter_Orb=v;pcall(ProcessScraps) end})
+ScrapTab:CreateButton({Name="手动刷新透视",Callback=function() pcall(ProcessScraps) end})
 
-MainTab:CreateToggle({
-    Name = "礼物透视",
-    CurrentValue = _G[S].GiftESP,
-    Flag = "GiftESPToggle",
-    Callback = function(v)
-        _G[S].GiftESP = v
-        pcall(ProcessScraps)
-    end
-})
+EspTab:CreateButton({Name="强制刷新实体列表",Callback=function() for E in pairs(EH) do if EH[E] then EH[E]:Destroy() end if EL[E] then EL[E]:Destroy() end EH[E]=nil;EL[E]=nil end pcall(RefreshESP) end})
 
-MainTab:CreateToggle({
-    Name = "实体透视",
-    CurrentValue = _G[S].E,
-    Flag = "EntityToggle",
-    Callback = function(v)
-        _G[S].E = v
-        if not v then CleanEntities({}) end
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "无限体力",
-    CurrentValue = _G[S].Stamina,
-    Flag = "StaminaToggle",
-    Callback = function(v)
-        _G[S].Stamina = v
-        setInfiniteStamina(v)
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "夜视除雾（亮度1）",
-    CurrentValue = _G[S].Vision,
-    Flag = "VisionToggle",
-    Callback = function(v)
-        _G[S].Vision = v
-        if v then
-            startVisionLoop()
-        else
-            stopVisionLoop()
-        end
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "自动跳跃",
-    CurrentValue = _G[S].AJ,
-    Flag = "AutoJumpToggle",
-    Callback = function(v)
-        _G[S].AJ = v
-        if v then performJump() end
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "显示时间 (左下角)",
-    CurrentValue = _G[S].ShowTime,
-    Flag = "ShowTimeToggle",
-    Callback = function(v)
-        _G[S].ShowTime = v
-        if v then
-            CreateTimeDisplay()
-        else
-            if TimeGui then TimeGui.Enabled = false end
-        end
-    end
-})
-
--- ===== 废料透视标签页 =====
-ScrapTab:CreateToggle({
-    Name = "过滤低级废料 (金属/锈蚀/浸湿)",
-    CurrentValue = _G[S].Filter_Scrap,
-    Flag = "FilterScrapToggle",
-    Callback = function(v)
-        _G[S].Filter_Scrap = v
-        pcall(ProcessScraps)
-    end
-})
-
-ScrapTab:CreateToggle({
-    Name = "仅显示稀有天气球",
-    CurrentValue = _G[S].Filter_Orb,
-    Flag = "FilterOrbToggle",
-    Callback = function(v)
-        _G[S].Filter_Orb = v
-        pcall(ProcessScraps)
-    end
-})
-
-ScrapTab:CreateButton({
-    Name = "手动刷新透视",
-    Callback = function()
-        pcall(ProcessScraps)
-    end
-})
-
--- ===== 实体透视标签页 =====
-EntityTab:CreateButton({
-    Name = "强制刷新实体列表",
-    Callback = function()
-        CleanEntities({})
-        task.wait(0.1)
-        RefreshEntityESP()
-    end
-})
-
--- ===== 传送系统标签页 =====
-TeleportTab:CreateToggle({
-    Name = "启用传送系统",
-    CurrentValue = _G[S].TeleportEnabled,
-    Flag = "TeleportEnabledToggle",
-    Callback = function(v)
-        _G[S].TeleportEnabled = v
-    end
-})
-
-TeleportTab:CreateSection("快速传送")
-
-for _, location in ipairs(Locations) do
-    TeleportTab:CreateButton({
-        Name = "传送到 " .. location.Name,
-        Callback = function()
-            if _G[S].TeleportEnabled then
-                TeleportToLocation(location.X, location.Y, location.Z)
-            else
-                Rayfield:Notify({
-                    Title = "传送系统未启用",
-                    Content = "请先启用传送系统",
-                    Duration = 3
-                })
-            end
-        end
-    })
+TpTab:CreateToggle({Name="启用传送系统",CurrentValue=false,Callback=function(v) _G[S].TeleportEnabled=v end})
+for _,l in ipairs(Locs) do
+    TpTab:CreateButton({Name="传送到 "..l.Name,Callback=function() if _G[S].TeleportEnabled then TP(l.X,l.Y,l.Z) else Rayfield:Notify({Title="传送系统未启用",Content="请先启用传送系统",Duration=3}) end end})
 end
 
--- ===== 武器系统标签页 =====
-WeaponTab:CreateToggle({
-    Name = "启用武器修改",
-    CurrentValue = _G[S].WeaponModEnabled,
-    Flag = "WeaponModToggle",
-    Callback = function(v)
-        _G[S].WeaponModEnabled = v
-        if v then
-            local count = modifyAllWeapons()
-            Rayfield:Notify({
-                Title = "武器修改",
-                Content = "已修改 " .. count .. " 个武器为无冷却",
-                Duration = 3
-            })
-        end
-    end
-})
+WeapTab:CreateToggle({Name="启用武器修改",CurrentValue=false,Callback=function(v) _G[S].WeaponModEnabled=v; if v then local c=ModWeap() Rayfield:Notify({Title="武器修改",Content="已修改 "..c.." 个武器为无冷却",Duration=3}) end end})
+WeapTab:CreateInput({Name="输入武器名称",PlaceholderText="例如：黑曜石剑",RemoveTextAfterFocusLost=false,Callback=function(t) weapInput=t end})
+WeapTab:CreateButton({Name="添加为无冷却武器",Callback=function() if weapInput~="" then _G[S].CustomWeaponCooldowns[weapInput]=true;Rayfield:Notify({Title="成功",Content="已将 '"..weapInput.."' 设置为无冷却",Duration=3});weapInput="" else Rayfield:Notify({Title="错误",Content="请输入武器名称",Duration=3}) end end})
+WeapTab:CreateButton({Name="立即修改所有武器为无冷却",Callback=function() local c=ModWeap() Rayfield:Notify({Title="武器修改",Content="已修改 "..c.." 个武器为无冷却",Duration=3}) end})
+WeapTab:CreateSection("清理垃圾道具")
+WeapTab:CreateButton({Name="清理垃圾道具",Callback=function() local c=CleanJunk() Rayfield:Notify({Title="清理完成",Content="已清理 "..c.." 个垃圾道具",Duration=3}) end})
 
-WeaponTab:CreateSection("自定义无冷却武器")
-
-WeaponTab:CreateInput({
-    Name = "输入武器名称",
-    PlaceholderText = "例如：黑曜石剑",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        customWeaponInput = text
-    end
-})
-
-WeaponTab:CreateButton({
-    Name = "添加为无冷却武器",
-    Callback = function()
-        if customWeaponInput and customWeaponInput ~= "" then
-            _G[S].CustomWeaponCooldowns[customWeaponInput] = true
-            Rayfield:Notify({
-                Title = "成功",
-                Content = "已将 '" .. customWeaponInput .. "' 设置为无冷却",
-                Duration = 3
-            })
-            customWeaponInput = ""
-        else
-            Rayfield:Notify({
-                Title = "错误",
-                Content = "请输入武器名称",
-                Duration = 3
-            })
-        end
-    end
-})
-
-WeaponTab:CreateButton({
-    Name = "立即修改所有武器为无冷却",
-    Callback = function()
-        local count = modifyAllWeapons()
-        Rayfield:Notify({
-            Title = "武器修改",
-            Content = "已修改 " .. count .. " 个武器为无冷却",
-            Duration = 3
-        })
-    end
-})
-
-WeaponTab:CreateSection("清理垃圾道具")
-
-WeaponTab:CreateButton({
-    Name = "清理垃圾道具",
-    Callback = function()
-        local count = cleanJunkItems()
-        Rayfield:Notify({
-            Title = "清理完成",
-            Content = "已清理 " .. count .. " 个垃圾道具",
-            Duration = 3
-        })
-    end
-})
-
--- ===== 关于标签页 =====
 AboutTab:CreateSection("作者信息")
-
-AboutTab:CreateParagraph({
-    Title = "作者联系方式",
-    Content = "QQ: 3819176694\nB站UID: 3494351078427466"
-})
-
-AboutTab:CreateButton({
-    Name = "点击复制作者QQ",
-    Callback = function()
-        local qqNumber = "3819176694"
-        pcall(function()
-            setclipboard(qqNumber)
-        end)
-        Rayfield:Notify({
-            Title = "复制成功",
-            Content = "作者QQ号 " .. qqNumber .. " 已复制到剪贴板",
-            Duration = 3
-        })
-    end
-})
-
+AboutTab:CreateParagraph({Title="作者联系方式",Content="QQ: 3819176694\nB站UID: 3494351078427466"})
+AboutTab:CreateButton({Name="点击复制作者QQ",Callback=function() pcall(setclipboard,"3819176694") Rayfield:Notify({Title="复制成功",Content="作者QQ号 3819176694 已复制到剪贴板",Duration=3}) end})
 AboutTab:CreateSection("更新日志")
+AboutTab:CreateParagraph({Title="更新内容",Content="1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）\n4. 无限体力改为100%"})
 
-AboutTab:CreateParagraph({
-    Title = "更新内容",
-    Content = "1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）"
-})
+OtherTab:CreateButton({Name="刷新饮料 (复制饮料/移除垃圾)",Callback=function() pcall(function() local BP=P:FindFirstChild("Backpack") or char; if not BP then return end; for _,n in ipairs({"FAKE PEPSI","Energy"}) do local m=BP:FindFirstChild(n); if m then local c=m:Clone();c.Parent=Lighting;m:Destroy();c.Parent=BP end end; for _,n in ipairs({"Damaged Stun Stick","Vitamins"}) do local i=BP:FindFirstChild(n);if i then i:Destroy() end end end) end})
 
--- ===== 其他标签页 =====
-OtherTab:CreateButton({
-    Name = "刷新饮料 (复制饮料/移除垃圾)",
-    Callback = function()
-        pcall(function()
-            local BP = P:FindFirstChild("Backpack") or P.Character
-            if not BP then return end
-            local TargetNames = {"FAKE PEPSI", "Energy"}
-            for _, name in ipairs(TargetNames) do
-                local Mother = BP:FindFirstChild(name)
-                if Mother then
-                    local Clone = Mother:Clone()
-                    Clone.Parent = game:GetService("Lighting")
-                    for _, item in ipairs(BP:GetChildren()) do
-                        if item.Name == name then item:Destroy() end
-                    end
-                    Clone.Parent = BP
-                end
-            end
-            for _, NM in ipairs({"Damaged Stun Stick", "Vitamins"}) do
-                local IT = BP:FindFirstChild(NM)
-                if IT then IT:Destroy() end
-            end
-        end)
-    end
-})
+task.spawn(function() while _G[S].A do pcall(ProcessScraps) task.wait(0.5) end end)
+task.spawn(function() while _G[S].A do pcall(RefreshESP) task.wait(2) end end)
 
--- ==================== 14. 启动提示 ====================
-task.spawn(function()
-    task.wait(2)
-    
-    -- 使用Rayfield通知显示警告
-    Rayfield:Notify({
-        Title = "⚠️ 警告",
-        Content = "概率封禁，酌情使用，若有封禁，概不负责。",
-        Duration = 10
-    })
-    
-    print("✅ 幽灵生存脚本 v.beta 已加载完成")
-    print("📌 实体透视每2秒自动刷新 | 时间显示左下角 | 传送系统已简化")
-    print("📞 作者QQ: 3819176694 | B站UID: 3494351078427466")
-end)
+Rayfield:Notify({Title="⚠️ 警告",Content="概率封禁，酌情使用，若有封禁，概不负责。",Duration=10})
+print("✅ 幽灵生存脚本 v.beta 已加载完成")
+print("📌 实体透视每2秒自动刷新 | 时间显示左下角 | 传送系统已简化")
+print("📞 作者QQ: 3819176694 | B站UID: 3494351078427466")
