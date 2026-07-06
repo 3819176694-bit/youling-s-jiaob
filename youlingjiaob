@@ -21,7 +21,7 @@ _G[S] = {
     GiftESP = false,
     E = false,
     Stamina = false,
-    Vision = false, VisionBright = 1,
+    Vision = false, VisionBright = 2,
     AJ = false,
     ShowTime = false,
     TeleportEnabled = false,
@@ -193,17 +193,24 @@ local function startVis()
     visConn=RunService.RenderStepped:Connect(function()
         if _G[S].Vision then
             Lighting.Brightness=_G[S].VisionBright
-            Lighting.FogEnd=999999; Lighting.FogStart=0
-            Lighting.Ambient=Color3.fromRGB(200,200,200)
-            Lighting.OutdoorAmbient=Color3.fromRGB(200,200,200)
-            Lighting.ClockTime=14; Lighting.ExposureCompensation=0.5
+            Lighting.FogEnd=999999
+            Lighting.FogStart=0
+            Lighting.Ambient=Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient=Color3.fromRGB(255, 255, 255)
+            Lighting.GlobalShadows=false
         end
     end)
 end
 local function stopVis()
     if visConn then visConn:Disconnect() visConn=nil end
-    Lighting.Brightness=oB; Lighting.FogEnd=lFE; Lighting.FogStart=lFS
-    Lighting.Ambient=oA; Lighting.OutdoorAmbient=oOA; Lighting.ClockTime=oC; Lighting.ExposureCompensation=oE
+    Lighting.Brightness=oB
+    Lighting.FogEnd=lFE
+    Lighting.FogStart=lFS
+    Lighting.Ambient=oA
+    Lighting.OutdoorAmbient=oOA
+    Lighting.ClockTime=oC
+    Lighting.ExposureCompensation=oE
+    Lighting.GlobalShadows=true
 end
 
 local ajFn=nil
@@ -287,8 +294,8 @@ MainTab:CreateToggle({Name="天气球透视",CurrentValue=false,Callback=functio
 MainTab:CreateToggle({Name="礼物透视",CurrentValue=false,Callback=function(v) _G[S].GiftESP=v;pcall(ProcessScraps) end})
 MainTab:CreateToggle({Name="实体透视",CurrentValue=false,Callback=function(v) _G[S].E=v; if not v then for E in pairs(EH) do if EH[E] then EH[E]:Destroy() end if EL[E] then EL[E]:Destroy() end EH[E]=nil;EL[E]=nil end end end})
 MainTab:CreateToggle({Name="无限体力 (100%)",CurrentValue=false,Callback=function(v) _G[S].Stamina=v;setStam(v) end})
-MainTab:CreateSlider({Name="夜视亮度",Range={0.5,3},Increment=0.1,CurrentValue=1,Callback=function(v) _G[S].VisionBright=v end})
-MainTab:CreateToggle({Name="夜视除雾",CurrentValue=false,Callback=function(v) _G[S].Vision=v; if v then startVis() else stopVis() end end})
+MainTab:CreateSlider({Name="夜视亮度",Range={0.5,3},Increment=0.1,CurrentValue=2,Callback=function(v) _G[S].VisionBright=v end})
+MainTab:CreateToggle({Name="循环夜视除雾",CurrentValue=false,Callback=function(v) _G[S].Vision=v; if v then startVis() else stopVis() end end})
 MainTab:CreateToggle({Name="自动跳跃",CurrentValue=false,Callback=function(v) _G[S].AJ=v end})
 MainTab:CreateToggle({Name="显示时间(左下)",CurrentValue=false,Callback=function(v) _G[S].ShowTime=v; if v then MakeTime() else if TG then TG.Enabled=false end end end})
 
@@ -314,7 +321,7 @@ AboutTab:CreateSection("作者信息")
 AboutTab:CreateParagraph({Title="作者联系方式",Content="QQ: 3819176694\nB站UID: 3494351078427466"})
 AboutTab:CreateButton({Name="点击复制作者QQ",Callback=function() pcall(setclipboard,"3819176694") Rayfield:Notify({Title="复制成功",Content="作者QQ号 3819176694 已复制到剪贴板",Duration=3}) end})
 AboutTab:CreateSection("更新日志")
-AboutTab:CreateParagraph({Title="更新内容",Content="1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）\n4. 无限体力改为100%"})
+AboutTab:CreateParagraph({Title="更新内容",Content="1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）\n4. 无限体力改为100%\n5. 循环夜视除雾（无光源也亮）"})
 
 OtherTab:CreateButton({Name="刷新饮料 (复制饮料/移除垃圾)",Callback=function() pcall(function() local BP=P:FindFirstChild("Backpack") or char; if not BP then return end; for _,n in ipairs({"FAKE PEPSI","Energy"}) do local m=BP:FindFirstChild(n); if m then local c=m:Clone();c.Parent=Lighting;m:Destroy();c.Parent=BP end end; for _,n in ipairs({"Damaged Stun Stick","Vitamins"}) do local i=BP:FindFirstChild(n);if i then i:Destroy() end end end) end})
 
