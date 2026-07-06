@@ -37,7 +37,7 @@ local Window = Rayfield:CreateWindow({
     ConfigurationSaving = { Enabled = false }
 })
 
--- 屏幕上方距离显示
+-- 屏幕右下角距离显示（半透明，勉强可见）
 local ScreenDistanceGui = nil
 local DistanceLabel = nil
 
@@ -55,31 +55,26 @@ local function CreateScreenDistanceDisplay()
     
     local Frame = Instance.new("Frame")
     Frame.Name = "DistanceFrame"
-    Frame.Size = UDim2.new(0, 300, 0, 50)
-    Frame.Position = UDim2.new(0.5, -150, 0, 20)
+    Frame.Size = UDim2.new(0, 200, 0, 30)
+    Frame.Position = UDim2.new(1, -210, 1, -40)
     Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    Frame.BackgroundTransparency = 0.5
+    Frame.BackgroundTransparency = 0.8
     Frame.BorderSizePixel = 0
     Frame.Parent = ScreenDistanceGui
     
-    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
-    
-    local Stroke = Instance.new("UIStroke")
-    Stroke.Color = Color3.fromRGB(255, 255, 255)
-    Stroke.Thickness = 2
-    Stroke.Transparency = 0.3
-    Stroke.Parent = Frame
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 4)
     
     DistanceLabel = Instance.new("TextLabel")
     DistanceLabel.Name = "DistanceLabel"
     DistanceLabel.Size = UDim2.new(1, -10, 1, 0)
     DistanceLabel.Position = UDim2.new(0, 5, 0, 0)
     DistanceLabel.BackgroundTransparency = 1
-    DistanceLabel.Text = "怪物距离: 0 studs"
+    DistanceLabel.Text = "怪物: 0 studs"
     DistanceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    DistanceLabel.TextSize = 24
-    DistanceLabel.Font = Enum.Font.GothamBold
-    DistanceLabel.TextXAlignment = Enum.TextXAlignment.Center
+    DistanceLabel.TextTransparency = 0.7
+    DistanceLabel.TextSize = 14
+    DistanceLabel.Font = Enum.Font.Gotham
+    DistanceLabel.TextXAlignment = Enum.TextXAlignment.Right
     DistanceLabel.Parent = Frame
 end
 
@@ -213,12 +208,12 @@ local function RefreshESP()
         end
     end
     
-    -- 更新屏幕上方距离显示
+    -- 更新屏幕右下角距离显示（半透明，勉强可见）
     if ScreenDistanceGui and ScreenDistanceGui.Enabled and DistanceLabel then
         if closestMonster then
-            DistanceLabel.Text = string.format("怪物距离: %.1f studs", closestDistance)
+            DistanceLabel.Text = string.format("怪物: %.0f", closestDistance)
         else
-            DistanceLabel.Text = "怪物距离: 无怪物"
+            DistanceLabel.Text = "怪物: 无"
         end
     end
     
@@ -401,7 +396,7 @@ AboutTab:CreateSection("作者信息")
 AboutTab:CreateParagraph({Title="作者联系方式",Content="QQ: 3819176694\nB站UID: 3494351078427466"})
 AboutTab:CreateButton({Name="点击复制作者QQ",Callback=function() pcall(setclipboard,"3819176694") Rayfield:Notify({Title="复制成功",Content="作者QQ号 3819176694 已复制到剪贴板",Duration=3}) end})
 AboutTab:CreateSection("更新日志")
-AboutTab:CreateParagraph({Title="更新内容",Content="1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）\n4. 无限体力改为100%\n5. 循环夜视除雾（无光源也亮）\n6. ESP距离每帧更新+屏幕上方显示"})
+AboutTab:CreateParagraph({Title="更新内容",Content="1. 增加github\n2. 增加无冷却\n3. 增加礼物透视（显示完整名称）\n4. 无限体力改为100%\n5. 循环夜视除雾（无光源也亮）\n6. ESP距离每帧更新+屏幕右下角半透明显示"})
 
 OtherTab:CreateButton({Name="刷新饮料 (复制饮料/移除垃圾)",Callback=function() pcall(function() local BP=P:FindFirstChild("Backpack") or char; if not BP then return end; for _,n in ipairs({"FAKE PEPSI","Energy"}) do local m=BP:FindFirstChild(n); if m then local c=m:Clone();c.Parent=Lighting;m:Destroy();c.Parent=BP end end; for _,n in ipairs({"Damaged Stun Stick","Vitamins"}) do local i=BP:FindFirstChild(n);if i then i:Destroy() end end end) end})
 
@@ -416,5 +411,5 @@ task.spawn(function() while _G[S].A do pcall(ProcessScraps) task.wait(0.5) end e
 
 Rayfield:Notify({Title="⚠️ 警告",Content="概率封禁，酌情使用，若有封禁，概不负责。",Duration=10})
 print("✅ 幽灵生存脚本 v.beta 已加载完成")
-print("📌 实体透视每帧刷新 | 屏幕上方显示怪物距离 | 时间显示左下角")
+print("📌 实体透视每帧刷新 | 屏幕右下角半透明距离显示 | 时间显示左下角")
 print("📞 作者QQ: 3819176694 | B站UID: 3494351078427466")
